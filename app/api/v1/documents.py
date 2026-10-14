@@ -44,7 +44,7 @@ async def upload_document(file: UploadFile = File(...)):
     async with httpx.AsyncClient() as client:
         try:
             storage_response = await client.post(
-                f"{settings.storage_url}/documents/",
+                f"{settings.storage_url}/api/v1/documents/",
                 json={
                     "filename": file.filename or "",
                     "content": extracted_data["content"],
@@ -77,7 +77,7 @@ async def list_documents():
     """Lista todos los documentos desde el microservicio storage."""
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(f"{settings.storage_url}/documents/", timeout=10.0)
+            response = await client.get(f"{settings.storage_url}/api/v1/documents/", timeout=10.0)
             response.raise_for_status()
         except httpx.HTTPError as e:
             raise HTTPException(
@@ -94,7 +94,7 @@ async def get_document(document_id: str):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
-                f"{settings.storage_url}/documents/{document_id}", timeout=10.0
+                f"{settings.storage_url}/api/v1/documents/{document_id}", timeout=10.0
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -122,7 +122,7 @@ async def update_document(document_id: str, body: UpdateDocumentRequest):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.put(
-                f"{settings.storage_url}/documents/{document_id}",
+                f"{settings.storage_url}/api/v1/documents/{document_id}",
                 json={"content": body.content},
                 timeout=10.0,
             )
@@ -152,7 +152,7 @@ async def delete_document(document_id: str):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.delete(
-                f"{settings.storage_url}/documents/{document_id}", timeout=10.0
+                f"{settings.storage_url}/api/v1/documents/{document_id}", timeout=10.0
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as e:

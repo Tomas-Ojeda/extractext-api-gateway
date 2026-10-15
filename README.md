@@ -54,7 +54,7 @@ api-gateway/
 | `APP_NAME` | Nombre de la aplicación | `extracText API Gateway` |
 | `APP_VERSION` | Versión | `0.1.0` |
 | `APP_DEBUG` | Modo debug | `false` |
-| `EXTRACTOR_URL` | URL del microservicio Extractor | `http://pdf-extractxt-extractor:8000` |
+| `INGESTION_URL` | URL del microservicio Ingestion | `http://pdf-extractxt-ingestion:8000` |
 | `STORAGE_URL` | URL del microservicio Storage | `http://pdf-extractxt-storage:8000` |
 
 ## Desarrollo Local

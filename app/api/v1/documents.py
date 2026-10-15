@@ -1,5 +1,5 @@
 import httpx
-from fastapi import APIRouter, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, HTTPException, Response, UploadFile, File, status
 from pydantic import BaseModel
 
 from config.settings import settings
@@ -18,58 +18,58 @@ class UpdateDocumentRequest(BaseModel):
     content: str
 
 
-@router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-async def upload_document(file: UploadFile = File(...)):
-    """Recibe un PDF, lo envía al extractor y luego al storage."""
+@router.post("/", response_model=DocumentResponse)
+async def upload_document(file: UploadFile = File(...), response: Response = None):
+    """Recibe un PDF y lo reenvia al servicio de ingestion."""
     file_bytes = await file.read()
+    url = f"{settings.ingestion_url}/api/v1/documents/"
+    try:
+        async with httpx.AsyncClient() as client:
+            http_response = await client.post(
+                url,
+                files={"file": (file.filename or "", file_bytes, "application/pdf")},
+                timeout=45.0,
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Error al subir documento: {str(exc)}",
+        )
 
-    # 1. Extraer texto usando el microservicio extractor
-    async with httpx.AsyncClient() as client:
+    if 200 <= http_response.status_code < 300:
         try:
-            extract_response = await client.post(
-                f"{settings.extractor_url}/api/v1/extract",
-                files={"file": (file.filename, file_bytes, "application/pdf")},
-                timeout=30.0,
-            )
-            extract_response.raise_for_status()
-        except httpx.HTTPError as e:
+            data = http_response.json()
+        except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error al extraer texto: {str(e)}",
+                detail="Respuesta invalida del servicio de ingestion",
             )
+        response.status_code = http_response.status_code
+        return DocumentResponse(
+            id=data["id"],
+            filename=data["filename"],
+            content=data["content"],
+            checksum=data["checksum"],
+        )
 
-    extracted_data = extract_response.json()
+    if 400 <= http_response.status_code < 500:
+        detail = _extract_detail(http_response, "Error al procesar el documento")
+        raise HTTPException(status_code=http_response.status_code, detail=detail)
 
-    # 2. Guardar en el microservicio storage
-    async with httpx.AsyncClient() as client:
-        try:
-            storage_response = await client.post(
-                f"{settings.storage_url}/api/v1/documents/",
-                json={
-                    "filename": file.filename or "",
-                    "content": extracted_data["content"],
-                    "checksum": extracted_data["checksum"],
-                },
-                timeout=10.0,
-            )
-            storage_response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 409:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="El documento ya existe (checksum duplicado)",
-                )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error al guardar documento: {str(e)}",
-            )
-        except httpx.HTTPError as e:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error al guardar documento: {str(e)}",
-            )
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"Error al subir documento: {http_response.text}",
+    )
 
-    return storage_response.json()
+
+def _extract_detail(response: httpx.Response, default: str) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return default
+    if isinstance(payload, dict) and "detail" in payload:
+        return str(payload["detail"])
+    return default
 
 
 @router.get("/", response_model=list[DocumentResponse])
@@ -77,7 +77,9 @@ async def list_documents():
     """Lista todos los documentos desde el microservicio storage."""
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(f"{settings.storage_url}/api/v1/documents/", timeout=10.0)
+            response = await client.get(
+                f"{settings.storage_url}/api/v1/documents/", timeout=10.0
+            )
             response.raise_for_status()
         except httpx.HTTPError as e:
             raise HTTPException(

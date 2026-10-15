@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     app_debug: bool = False
 
     # URLs de los microservicios
-    extractor_url: str = "http://pdf-extractxt-extractor:8000"
+    ingestion_url: str = "http://pdf-extractxt-ingestion:8000"
     storage_url: str = "http://pdf-extractxt-storage:8000"
 
 

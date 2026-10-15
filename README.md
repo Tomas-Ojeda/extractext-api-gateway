@@ -41,8 +41,8 @@ api-gateway/
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/v1/health` | Health check |
-| POST | `/api/v1/documents/` | Subir PDF, extraer texto y guardar |
-| GET | `/api/v1/documents/` | Listar todos los documentos |
+| POST | `/api/v1/documents/` | Subir PDF (proxy streaming) y delegar en Ingestion |
+| GET | `/api/v1/documents/` | Listar resumenes paginados (`limit`/`offset`), sin `content` |
 | GET | `/api/v1/documents/{id}` | Obtener documento por ID |
 | PUT | `/api/v1/documents/{id}` | Actualizar contenido de documento |
 | DELETE | `/api/v1/documents/{id}` | Eliminar documento |
@@ -56,6 +56,10 @@ api-gateway/
 | `APP_DEBUG` | Modo debug | `false` |
 | `INGESTION_URL` | URL del microservicio Ingestion | `http://pdf-extractxt-ingestion:8000` |
 | `STORAGE_URL` | URL del microservicio Storage | `http://pdf-extractxt-storage:8000` |
+| `STORAGE_TIMEOUT_SECONDS` | Timeout de llamadas a Storage | `10` |
+| `INGESTION_TIMEOUT_SECONDS` | Timeout de llamadas a Ingestion | `45` |
+| `PDF_MAX_SIZE_MB` | Tamano maximo de PDF (rechazo temprano 413) | `10` |
+| `WEB_CONCURRENCY` | Procesos uvicorn por contenedor | `2` |
 
 ## Desarrollo Local
 

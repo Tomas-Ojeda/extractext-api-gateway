@@ -1,3 +1,4 @@
+import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,8 +12,10 @@ from config.settings import settings
 async def lifespan(app: FastAPI):
     """Gestiona el ciclo de vida del cliente HTTP compartido."""
     app.state.http_client = httpx.AsyncClient()
-    yield
-    await app.state.http_client.aclose()
+    try:
+        yield
+    finally:
+        await app.state.http_client.aclose()
 
 
 def create_app() -> FastAPI:
@@ -27,3 +30,13 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+# Manejo de señales para cierre graceful (Docker / Kubernetes)
+def _handle_shutdown(signum, frame):
+    import sys
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, _handle_shutdown)
+signal.signal(signal.SIGINT, _handle_shutdown)

@@ -1,9 +1,12 @@
+import asyncio
 import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 import httpx
+import redis.asyncio as redis
 
+from app import consul_registry
 from app.api.router import api_router
 from config.settings import settings
 
@@ -12,9 +15,13 @@ from config.settings import settings
 async def lifespan(app: FastAPI):
     """Gestiona el ciclo de vida del cliente HTTP compartido."""
     app.state.http_client = httpx.AsyncClient()
+    app.state.redis = redis.from_url(settings.redis_url, decode_responses=True)
     try:
+        await asyncio.to_thread(consul_registry.register)
         yield
     finally:
+        await asyncio.to_thread(consul_registry.deregister)
+        await app.state.redis.aclose()
         await app.state.http_client.aclose()
 
 

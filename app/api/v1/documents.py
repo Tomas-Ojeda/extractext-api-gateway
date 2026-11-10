@@ -2,7 +2,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 
-from app.api.dependencies import get_http_client
+from app.api.dependencies import get_http_client, get_redis
 from config.settings import settings
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -47,6 +47,34 @@ def _propagate_http_error(response: httpx.Response, default: str) -> None:
     )
 
 
+def _cache_key(document_id: str) -> str:
+    return f"document:{document_id}"
+
+
+async def _cache_get(redis_client, key: str) -> bytes | None:
+    try:
+        value = await redis_client.get(key)
+    except Exception:
+        return None
+    if value is None:
+        return None
+    return value.encode() if isinstance(value, str) else value
+
+
+async def _cache_set(redis_client, key: str, value: bytes) -> None:
+    try:
+        await redis_client.set(key, value, ex=settings.cache_ttl_seconds)
+    except Exception:
+        pass
+
+
+async def _cache_delete(redis_client, key: str) -> None:
+    try:
+        await redis_client.delete(key)
+    except Exception:
+        pass
+
+
 @router.get("/", response_model=list[DocumentSummaryResponse])
 async def list_documents(
     request: Request,
@@ -75,7 +103,17 @@ async def list_documents(
 async def get_document(
     document_id: str,
     client: httpx.AsyncClient = Depends(get_http_client),
+    redis_client=Depends(get_redis),
 ):
+    cache_key = _cache_key(document_id)
+    cached = await _cache_get(redis_client, cache_key)
+    if cached is not None:
+        return Response(
+            content=cached,
+            status_code=status.HTTP_200_OK,
+            media_type="application/json",
+        )
+
     url = f"{settings.storage_url}/api/v1/documents/{document_id}"
     try:
         response = await client.get(url, timeout=settings.storage_timeout_seconds)
@@ -86,6 +124,8 @@ async def get_document(
         )
     if response.status_code >= 400:
         _propagate_http_error(response, "Error al obtener documento")
+    if response.status_code == status.HTTP_200_OK:
+        await _cache_set(redis_client, cache_key, response.content)
     return Response(
         content=response.content,
         status_code=response.status_code,
@@ -172,7 +212,12 @@ async def upload_document(
 
 
 @router.put("/{document_id}", response_model=DocumentResponse)
-async def update_document(document_id: str, body: UpdateDocumentRequest, client: httpx.AsyncClient = Depends(get_http_client)):
+async def update_document(
+    document_id: str,
+    body: UpdateDocumentRequest,
+    client: httpx.AsyncClient = Depends(get_http_client),
+    redis_client=Depends(get_redis),
+):
     """Actualiza el contenido de un documento en el microservicio storage."""
     url = f"{settings.storage_url}/api/v1/documents/{document_id}"
     try:
@@ -198,11 +243,16 @@ async def update_document(document_id: str, body: UpdateDocumentRequest, client:
             detail=f"Error al actualizar documento: {str(e)}",
         )
 
+    await _cache_delete(redis_client, _cache_key(document_id))
     return response.json()
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_document(document_id: str, client: httpx.AsyncClient = Depends(get_http_client)):
+async def delete_document(
+    document_id: str,
+    client: httpx.AsyncClient = Depends(get_http_client),
+    redis_client=Depends(get_redis),
+):
     """Elimina un documento por su id desde el microservicio storage."""
     url = f"{settings.storage_url}/api/v1/documents/{document_id}"
     try:
@@ -223,3 +273,5 @@ async def delete_document(document_id: str, client: httpx.AsyncClient = Depends(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Error al eliminar documento: {str(e)}",
         )
+
+    await _cache_delete(redis_client, _cache_key(document_id))

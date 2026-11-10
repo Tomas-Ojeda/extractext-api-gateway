@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     app_debug: bool = False
 
+    # Consul (service discovery + health checks)
+    consul_url: str = "http://consul:8500"
+    service_name: str = "api-gateway"
+
+    # Cache (Redis, cache-aside en GET /documents/{id})
+    redis_url: str = "redis://pdf-extractxt-redis:6379/0"
+    cache_ttl_seconds: int = 60
+
     # URLs de los microservicios
     ingestion_url: str = "http://pdf-extractxt-ingestion:8000"
     storage_url: str = "http://pdf-extractxt-storage:8000"
